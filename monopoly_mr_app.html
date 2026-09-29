@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marginal Revenue</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: Georgia, 'Times New Roman', serif;
+  background: #f5f5f5;
+  display: flex;
+  justify-content: center;
+  padding: 28px 16px 40px;
+  min-height: 100vh;
+}
+#app {
+  width: 680px;
+  max-width: 100%;
+}
+h1 {
+  font-size: 1.35rem;
+  color: #1a1a1a;
+  margin-bottom: 4px;
+  font-weight: normal;
+}
+.subtitle {
+  font-size: 0.88rem;
+  color: #666;
+  margin-bottom: 22px;
+  font-style: italic;
+}
+.card {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  margin-bottom: 14px;
+}
+#chart-wrap { padding: 12px 12px 6px; }
+svg { display: block; width: 100%; }
+
+/* Controls */
+.controls { padding: 14px 20px 16px; }
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.slider-row:last-child { margin-bottom: 0; }
+.slider-row label {
+  font-size: 0.88rem;
+  color: #444;
+  white-space: nowrap;
+  min-width: 108px;
+}
+.slider-row input[type=range] { flex: 1; cursor: pointer; }
+#base-slider  { accent-color: #5c6bc0; }
+#qty-slider   { accent-color: #388e3c; }
+.qty-tag {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #222;
+  min-width: 44px;
+  text-align: right;
+}
+.qty-tag.base-tag { color: #3949ab; }
+.divider {
+  border: none;
+  border-top: 1px solid #eee;
+  margin: 10px 0;
+}
+.reset-btn {
+  background: none;
+  border: 1px solid #aaa;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 0.8rem;
+  color: #555;
+  cursor: pointer;
+  font-family: Georgia, serif;
+}
+.reset-btn:hover { background: #f0f0f0; }
+
+/* Stats */
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.stat {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 12px 14px;
+  text-align: center;
+}
+.stat-label {
+  font-size: 0.73rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 5px;
+}
+.stat-value {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #333;
+}
+.stat-value.gain { color: #2e7d32; }
+.stat-value.loss { color: #c62828; }
+
+/* Legend */
+.legend {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 8px 0 4px;
+}
+.leg-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: #555;
+}
+.leg-swatch {
+  width: 14px; height: 14px;
+  border-radius: 2px;
+  border: 1px solid #aaa;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Marginal Revenue</h1>
+  <p class="subtitle">Set a starting quantity, then move the quantity slider to see how revenue changes — and where that lands on the MR curve.</p>
+
+  <div class="card" id="chart-wrap">
+    <svg id="chart" viewBox="0 0 620 380"></svg>
+    <div class="legend">
+      <div class="leg-item"><div class="leg-swatch" style="background:rgba(76,175,80,0.25)"></div> Original TR</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:rgba(56,142,60,0.55)"></div> Revenue gained</div>
+      <div class="leg-item"><div class="leg-swatch" style="background:rgba(198,40,40,0.60)"></div> Revenue lost</div>
+    </div>
+  </div>
+
+  <div class="card controls">
+    <div class="slider-row">
+      <label>Base quantity</label>
+      <input type="range" id="base-slider" min="0" max="6" step="0.25" value="1.5">
+      <span class="qty-tag base-tag" id="base-tag">Q = 150</span>
+    </div>
+    <hr class="divider">
+    <div class="slider-row">
+      <label>Quantity</label>
+      <input type="range" id="qty-slider" min="0" max="6" step="0.25" value="1.5">
+      <span class="qty-tag" id="qty-tag">Q = 150</span>
+      <button class="reset-btn" id="reset-btn">&#x21BA;</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label" id="gain-label">Revenue gained</div>
+      <div class="stat-value gain" id="stat-gain">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label" id="loss-label">Revenue lost</div>
+      <div class="stat-value loss" id="stat-loss">—</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">MR (per unit)</div>
+      <div class="stat-value" id="stat-mr">—</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Demand: P = 6 − Q  (Q ∈ [0,6], P ∈ [0,6])
+// MR:     MR = 6 − 2Q  (continuous; same intercept, twice slope)
+// MC:     constant at P = 2
+
+function demandP(q) { return Math.max(0, 6 - q); }
+function mrContinuous(q) { return 6 - 2 * q; }
+
+// When moving from Q0 to Q1:
+//   MR per unit = (TR1 - TR0) / (Q1 - Q0) = 6 - Q0 - Q1
+//   (matches continuous MR at midpoint (Q0+Q1)/2)
+function mrPerUnit(q0, q1) { return 6 - q0 - q1; }
+
+let Q0 = 1.5;  // base (mutable)
+
+function fmtQ(q) { return Math.round(q * 100); }
+
+// ── SVG setup
+const W = 620, H = 380;
+const ML = 64, MR_M = 24, MT = 18, MB = 52;
+const PW = W - ML - MR_M;
+const PH = H - MT - MB;
+const GQMAX = 7, GPMAX = 7;
+
+function sx(q) { return ML + (q / GQMAX) * PW; }
+function sy(p) { return MT + PH - (p / GPMAX) * PH; }
+
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('chart');
+function mk(tag, attrs) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  svg.appendChild(e);
+  return e;
+}
+
+// Layer order (back → front):
+// 1. Faded original TR rect
+// 2. Gain rect
+// 3. Loss rect
+// 4. New-TR dashed outline
+// 5. Q0 reference lines (indigo dashed, shown when Q1 ≠ Q0)
+// 6. MC line, MR line, Demand line
+// 7. Axes, ticks, labels
+// 8. Dynamic dashed reference lines for Q1
+// 9. Dots, dynamic labels
+
+// 1. Faded original TR
+const rOrig = mk('rect', { x:0, y:0, width:0, height:0,
+  fill:'#4CAF50', 'fill-opacity':0.25, stroke:'none' });
+
+// 2–3. Gain / Loss
+const rGain = mk('rect', { x:0, y:0, width:0, height:0,
+  fill:'#388e3c', 'fill-opacity':0.55, stroke:'#2e7d32', 'stroke-width':1.2 });
+const rLoss = mk('rect', { x:0, y:0, width:0, height:0,
+  fill:'#c62828', 'fill-opacity':0.60, stroke:'#b71c1c', 'stroke-width':1.2 });
+
+// 4. New-TR dashed outline
+const rNew = mk('rect', { x:0, y:0, width:0, height:0,
+  fill:'none', stroke:'#1b5e20', 'stroke-width':1.5, 'stroke-dasharray':'6 3' });
+
+// 5. Q0 reference lines (indigo, hidden when Q1=Q0)
+const q0RefH = mk('line', { x1:sx(0), y1:0, x2:0, y2:0,
+  stroke:'#3949ab', 'stroke-width':1.5, 'stroke-dasharray':'5 3', opacity:0 });
+const q0RefV = mk('line', { x1:0, y1:sy(0), x2:0, y2:0,
+  stroke:'#3949ab', 'stroke-width':1.5, 'stroke-dasharray':'5 3', opacity:0 });
+const q0Dot  = mk('circle', { cx:0, cy:0, r:4.5,
+  fill:'white', stroke:'#3949ab', 'stroke-width':2, opacity:0 });
+const q0QLbl = mk('text', { x:0, y:sy(0)+30, 'text-anchor':'middle',
+  'font-size':11, 'font-family':'Georgia,serif', fill:'#3949ab', opacity:0 });
+const q0PLbl = mk('text', { x:sx(0)-8, y:0, 'text-anchor':'end',
+  'font-size':11, 'font-family':'Georgia,serif', fill:'#3949ab', opacity:0 });
+
+// MR line: (0,6) → (3,0)
+mk('line', { x1:sx(0), y1:sy(6), x2:sx(3), y2:sy(0),
+  stroke:'#a52929', 'stroke-width':2.5 });
+const mrLbl = mk('text', { x:sx(2.9)+4, y:sy(0.5)-3,
+  'text-anchor':'start', 'font-size':14, 'font-family':'Georgia,serif',
+  fill:'#a52929', 'font-style':'italic' });
+mrLbl.textContent = 'mr';
+
+// Demand line: (0,6) → (6,0)
+mk('line', { x1:sx(0), y1:sy(6), x2:sx(6), y2:sy(0),
+  stroke:'#1565c0', 'stroke-width':2.5 });
+const dLbl = mk('text', { x:sx(5.5)+4, y:sy(0.5)-3,
+  'text-anchor':'start', 'font-size':15, 'font-family':'Georgia,serif',
+  fill:'#1565c0', 'font-style':'italic' });
+dLbl.textContent = 'd';
+
+// 7. Axes
+mk('line', { x1:sx(0), y1:sy(0), x2:sx(GQMAX), y2:sy(0), stroke:'#333', 'stroke-width':1.5 });
+mk('line', { x1:sx(0), y1:sy(0), x2:sx(0), y2:sy(GPMAX), stroke:'#333', 'stroke-width':1.5 });
+
+const xLbl = mk('text', { x:sx(GQMAX/2), y:H-10, 'text-anchor':'middle',
+  'font-size':14, 'font-family':'Georgia,serif', fill:'#333' });
+xLbl.textContent = 'Quantity';
+const yLbl = mk('text', { x:14, y:sy(GPMAX/2), 'text-anchor':'middle',
+  'font-size':14, 'font-family':'Georgia,serif', fill:'#333',
+  transform:`rotate(-90 14 ${sy(GPMAX/2)})` });
+yLbl.textContent = 'Price ($)';
+
+for (let q = 0; q <= 6; q++) {
+  mk('line', { x1:sx(q), y1:sy(0), x2:sx(q), y2:sy(0)+5, stroke:'#666', 'stroke-width':1 });
+  const t = mk('text', { x:sx(q), y:sy(0)+18, 'text-anchor':'middle',
+    'font-size':11, 'font-family':'Georgia,serif', fill:'#555' });
+  t.textContent = q * 100;
+}
+for (let p = 0; p <= 6; p++) {
+  mk('line', { x1:sx(0)-4, y1:sy(p), x2:sx(0), y2:sy(p), stroke:'#666', 'stroke-width':1 });
+  const t = mk('text', { x:sx(0)-8, y:sy(p)+4, 'text-anchor':'end',
+    'font-size':11, 'font-family':'Georgia,serif', fill:'#555' });
+  t.textContent = '$' + p;
+}
+
+// 8. Dynamic Q1 reference lines
+const hLine = mk('line', { x1:0, y1:0, x2:0, y2:0,
+  stroke:'#555', 'stroke-width':1, 'stroke-dasharray':'4 3' });
+const vLine = mk('line', { x1:0, y1:0, x2:0, y2:0,
+  stroke:'#555', 'stroke-width':1, 'stroke-dasharray':'4 3' });
+
+// MR connector: vertical dashed line from box area to MR dot
+const mrConn = mk('line', { x1:0, y1:0, x2:0, y2:0,
+  stroke:'#a52929', 'stroke-width':1, 'stroke-dasharray':'3 3', opacity:0 });
+
+// 9. Dots
+const demDot  = mk('circle', { cx:0, cy:0, r:5,
+  fill:'#1565c0', stroke:'white', 'stroke-width':1.5 });
+const mrDot   = mk('circle', { cx:0, cy:0, r:5,
+  fill:'#a52929', stroke:'white', 'stroke-width':1.5, opacity:0 });
+
+// Dynamic price/qty labels at Q1
+const pLbl = mk('text', { x:0, y:0, 'text-anchor':'end',
+  'font-size':12, 'font-family':'Georgia,serif',
+  fill:'#1b5e20', 'font-weight':'bold' });
+
+// ── Reposition Q0 markers (called when base changes)
+function positionQ0Markers() {
+  const P0 = demandP(Q0);
+  // Original TR rect
+  rOrig.setAttribute('x', sx(0));
+  rOrig.setAttribute('y', sy(P0));
+  rOrig.setAttribute('width', sx(Q0) - sx(0));
+  rOrig.setAttribute('height', sy(0) - sy(P0));
+  // Q0 reference lines
+  q0RefH.setAttribute('y1', sy(P0)); q0RefH.setAttribute('y2', sy(P0));
+  q0RefH.setAttribute('x2', sx(Q0));
+  q0RefV.setAttribute('x1', sx(Q0)); q0RefV.setAttribute('x2', sx(Q0));
+  q0RefV.setAttribute('y2', sy(P0));
+  q0Dot.setAttribute('cx', sx(Q0)); q0Dot.setAttribute('cy', sy(P0));
+  q0QLbl.setAttribute('x', sx(Q0));
+  q0QLbl.textContent = fmtQ(Q0);
+  q0PLbl.setAttribute('y', sy(P0) + 4);
+  q0PLbl.textContent = '$' + P0.toFixed(2);
+}
+
+// ── Main update
+function update(Q1) {
+  const P0 = demandP(Q0);
+  const P1 = demandP(Q1);
+  const atBase = Math.abs(Q1 - Q0) < 0.001;
+
+  // Show/hide Q0 reference markers
+  const vis = atBase ? 0 : 1;
+  q0RefH.setAttribute('opacity', vis);
+  q0RefV.setAttribute('opacity', vis);
+  q0Dot.setAttribute('opacity', vis);
+  q0QLbl.setAttribute('opacity', vis);
+  q0PLbl.setAttribute('opacity', vis);
+  rOrig.setAttribute('fill-opacity', atBase ? 0 : 0.25);
+
+  if (atBase) {
+    // No boxes, no outlines
+    [rGain, rLoss, rNew].forEach(r => r.setAttribute('opacity', 0));
+    mrDot.setAttribute('opacity', 0);
+    mrConn.setAttribute('opacity', 0);
+  } else if (Q1 > Q0) {
+    // SELLING MORE: lower price
+    // Gain box: new units at new price — from Q0 to Q1, height P1
+    rGain.setAttribute('x', sx(Q0));
+    rGain.setAttribute('y', sy(P1));
+    rGain.setAttribute('width', sx(Q1) - sx(Q0));
+    rGain.setAttribute('height', sy(0) - sy(P1));
+    rGain.setAttribute('opacity', 1);
+
+    // Loss box: existing Q0 units lose (P0−P1) — from 0 to Q0, height (P0−P1)
+    rLoss.setAttribute('x', sx(0));
+    rLoss.setAttribute('y', sy(P0));
+    rLoss.setAttribute('width', sx(Q0) - sx(0));
+    rLoss.setAttribute('height', sy(P1) - sy(P0));
+    rLoss.setAttribute('opacity', Q0 > 0 ? 1 : 0);
+
+    // New TR outline
+    rNew.setAttribute('x', sx(0));
+    rNew.setAttribute('y', sy(P1));
+    rNew.setAttribute('width', sx(Q1) - sx(0));
+    rNew.setAttribute('height', sy(0) - sy(P1));
+    rNew.setAttribute('opacity', 1);
+  } else {
+    // SELLING LESS: higher price
+    // Gain box: remaining Q1 units gain (P1−P0) — from 0 to Q1, height (P1−P0)
+    rGain.setAttribute('x', sx(0));
+    rGain.setAttribute('y', sy(P1));
+    rGain.setAttribute('width', sx(Q1) - sx(0));
+    rGain.setAttribute('height', sy(P0) - sy(P1));
+    rGain.setAttribute('opacity', Q1 > 0 ? 1 : 0);
+
+    // Loss box: forfeited Q0−Q1 units at old price — from Q1 to Q0, height P0
+    rLoss.setAttribute('x', sx(Q1));
+    rLoss.setAttribute('y', sy(P0));
+    rLoss.setAttribute('width', sx(Q0) - sx(Q1));
+    rLoss.setAttribute('height', sy(0) - sy(P0));
+    rLoss.setAttribute('opacity', 1);
+
+    // New TR outline
+    rNew.setAttribute('x', sx(0));
+    rNew.setAttribute('y', sy(P1));
+    rNew.setAttribute('width', sx(Q1) - sx(0));
+    rNew.setAttribute('height', sy(0) - sy(P1));
+    rNew.setAttribute('opacity', 1);
+  }
+
+  // MR dot: sits on the continuous MR curve at midpoint (Q0+Q1)/2
+  const qMid = (Q0 + Q1) / 2;
+  const mrVal = mrContinuous(qMid);   // = 6 − 2*(Q0+Q1)/2 = 6 − Q0 − Q1 ✓
+  const inBounds = qMid >= 0 && qMid <= 3;  // MR line runs 0..3
+
+  if (!atBase && inBounds) {
+    mrDot.setAttribute('cx', sx(qMid));
+    mrDot.setAttribute('cy', sy(mrVal));
+    mrDot.setAttribute('opacity', 1);
+    // Connector from midpoint x-position, from edge of rect area down to MR dot
+    const connX = sx(qMid);
+    const connYtop = Q1 > Q0 ? sy(P1) : sy(P0);
+    mrConn.setAttribute('x1', connX); mrConn.setAttribute('x2', connX);
+    mrConn.setAttribute('y1', connYtop); mrConn.setAttribute('y2', sy(mrVal));
+    mrConn.setAttribute('opacity', 1);
+  } else {
+    mrDot.setAttribute('opacity', 0);
+    mrConn.setAttribute('opacity', 0);
+  }
+
+  // Q1 reference lines and dot
+  hLine.setAttribute('x1', sx(0)); hLine.setAttribute('x2', sx(Q1));
+  hLine.setAttribute('y1', sy(P1)); hLine.setAttribute('y2', sy(P1));
+  vLine.setAttribute('x1', sx(Q1)); vLine.setAttribute('x2', sx(Q1));
+  vLine.setAttribute('y1', sy(0)); vLine.setAttribute('y2', sy(P1));
+  demDot.setAttribute('cx', sx(Q1)); demDot.setAttribute('cy', sy(P1));
+
+  pLbl.setAttribute('x', sx(0) - 8);
+  pLbl.setAttribute('y', sy(P1) + 4);
+  pLbl.textContent = atBase ? '' : '$' + P1.toFixed(2);
+
+  // Slider tag
+  document.getElementById('qty-tag').textContent = 'Q = ' + fmtQ(Q1);
+
+  // Stats
+  const dQ = Q1 - Q0;
+  const gainAmt = Q1 > Q0 ? (Q1 - Q0) * P1 : Q1 * (P1 - P0);
+  const lossAmt = Q1 > Q0 ? Q0 * (P0 - P1) : (Q0 - Q1) * P0;
+  const mr = atBase ? null : mrVal;
+
+  const statGain = document.getElementById('stat-gain');
+  const statLoss = document.getElementById('stat-loss');
+  const statMR   = document.getElementById('stat-mr');
+  const gainLbl  = document.getElementById('gain-label');
+  const lossLbl  = document.getElementById('loss-label');
+
+  if (atBase) {
+    statGain.textContent = '—'; statGain.className = 'stat-value';
+    statLoss.textContent = '—'; statLoss.className = 'stat-value';
+    statMR.textContent   = '—'; statMR.className   = 'stat-value';
+    gainLbl.textContent = 'Revenue gained';
+    lossLbl.textContent = 'Revenue lost';
+  } else {
+    gainLbl.textContent = Q1 > Q0 ? 'From new units' : 'Higher price on units';
+    lossLbl.textContent = Q1 > Q0 ? 'On existing units' : 'From fewer units';
+    statGain.textContent = '+$' + (gainAmt * 100).toFixed(2);
+    statGain.className = 'stat-value gain';
+    statLoss.textContent = '−$' + (lossAmt * 100).toFixed(2);
+    statLoss.className = 'stat-value loss';
+    const mrSign = mr >= 0 ? '+' : '−';
+    statMR.textContent = mrSign + '$' + Math.abs(mr).toFixed(2);
+    statMR.className = 'stat-value ' + (mr > 0.001 ? 'gain' : mr < -0.001 ? 'loss' : '');
+  }
+}
+
+// ── Events
+const baseSlider = document.getElementById('base-slider');
+const qtySlider  = document.getElementById('qty-slider');
+
+baseSlider.addEventListener('input', () => {
+  Q0 = parseFloat(baseSlider.value);
+  document.getElementById('base-tag').textContent = 'Q = ' + fmtQ(Q0);
+  positionQ0Markers();
+  qtySlider.value = Q0;
+  update(Q0);
+});
+
+qtySlider.addEventListener('input', () => update(parseFloat(qtySlider.value)));
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  qtySlider.value = Q0;
+  update(Q0);
+});
+
+// ── Init
+positionQ0Markers();
+update(Q0);
+</script>
+</body>
+</html>
